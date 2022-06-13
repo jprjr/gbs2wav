@@ -1,0 +1,3 @@
+[submodule "thirdparty/SameBoy"]
+	path = thirdparty/SameBoy
+	url = https://github.com/LIJI32/SameBoy.git
