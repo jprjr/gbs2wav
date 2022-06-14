@@ -128,14 +128,19 @@ int main(int argc, const char *argv[]) {
     gbsData = slurp(argv[1], &gbsSize);
     if(gbsData == NULL) return 1;
 
-    GB_init(&gb, GB_MODEL_CGB_E);
+    GB_init(&gb, GB_MODEL_DMG_B);
+    GB_set_sample_rate(&gb, SAMPLE_RATE);
+    GB_set_user_data(&gb, &abuffer);
+    GB_apu_set_sample_callback(&gb, on_sample);
+    GB_set_rendering_disabled(&gb, 1);
+
     GB_load_gbs_from_buffer(&gb, gbsData, gbsSize, &gbsInfo);
 
     memcpy(baseName,argv[1],strlen(argv[1]));
     baseName[strlen(argv[1])] = '\0';
 
     c = &baseName[strlen(baseName)-1];
-    while(c > &baseName[0] && *c != '/') {
+    while(c >= &baseName[0] && *c != '/') {
         *c = '\0';
         c--;
     }
@@ -233,13 +238,6 @@ int main(int argc, const char *argv[]) {
     }
 
     dump_gbs_info(&gbsInfo);
-    GB_set_sample_rate(&gb, SAMPLE_RATE);
-    GB_set_user_data(&gb, &abuffer);
-    GB_apu_set_sample_callback(&gb, on_sample);
-    GB_set_pixels_output(&gb, pixels);
-    GB_set_vblank_callback(&gb, dummy_vblank);
-    GB_set_rgb_encode_callback(&gb, rgb_encode_callback);
-
     i = gbsInfo.first_track;
     while(i < gbsInfo.track_count) {
         trackName[0] = '\0';
