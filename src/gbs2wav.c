@@ -15,6 +15,8 @@
 #define CHANNELS 2
 #define BUFFER_SIZE 8192
 
+#define CLAMP(val, min, max) ( (val) < (min) ? (min) : (val) > (max) ? (max) : (val) )
+
 typedef struct str_buffer {
     uint8_t *x;
     uint32_t a;
@@ -602,8 +604,8 @@ fade_frames(int16_t *data, unsigned int framesRem, unsigned int framesFade, unsi
     unsigned int i = 0;
     unsigned int f = framesFade;
     double fade;
+    int32_t sl, sr;
 
-    if(framesRem - frameCount > framesFade) return;
     if(framesRem > framesFade) {
         i = framesRem - framesFade;
         f += i;
@@ -611,10 +613,22 @@ fade_frames(int16_t *data, unsigned int framesRem, unsigned int framesFade, unsi
         f = framesRem;
     }
 
-    while(i<frameCount) {
+    while(i<frameCount && f > i) {
         fade = (double)(f-i) / (double)framesFade;
-        data[(i*2)+0] *= fade;
-        data[(i*2)+1] *= fade;
+        sl = (int32_t)data[(i*2)+0];
+        sr = (int32_t)data[(i*2)+1];
+        sl *= fade;
+        sr *= fade;
+        sl = CLAMP(sl,-0x8000,0x7FFF);
+        sr = CLAMP(sr,-0x8000,0x7FFF);
+        data[(i*2)+0] = (int16_t)sl;
+        data[(i*2)+1] = (int16_t)sr;
+        i++;
+    }
+
+    while(i<frameCount) {
+        data[(i*2)+0] = 0;
+        data[(i*2)+1] = 0;
         i++;
     }
 
