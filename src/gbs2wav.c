@@ -11,7 +11,7 @@
 #include <string.h>
 #include <errno.h>
 
-#define SAMPLE_RATE 48000
+#define DEFAULT_SAMPLE_RATE 48000
 #define CHANNELS 2
 #define BUFFER_SIZE 8192
 
@@ -28,9 +28,9 @@ typedef struct audio_buffer {
     uint64_t startFrames;
     uint64_t totalFrames;
     uint64_t fadeFrames;
-    int16_t samples[2 * BUFFER_SIZE];
-    uint8_t packed[2 * BUFFER_SIZE * sizeof(int16_t)];
-    uint32_t curSample;
+    int16_t samples[CHANNELS * BUFFER_SIZE];
+    uint8_t packed[CHANNELS * BUFFER_SIZE * sizeof(int16_t)];
+    uint64_t curSample;
 } audio_buffer;
 
 static str_buffer id3_buffer;
@@ -38,10 +38,10 @@ static str_buffer id3_buffer;
 static uint8_t *slurp(const char *filename, uint32_t *size);
 static void dump_gbs_info(const GB_gbs_info_t *info);
 
-static void fade_frames(int16_t *d, unsigned int framesRem, unsigned int fadeFrames, unsigned int frameCount);
-static void pack_frames(uint8_t *d, int16_t *s, unsigned int frameCount);
+static void fade_frames(int16_t *d, uint64_t framesRem, uint64_t fadeFrames, uint64_t frameCount);
+static void pack_frames(uint8_t *d, int16_t *s, uint64_t frameCount);
 
-static int write_wav_header(FILE *f, uint64_t totalFrames, str_buffer *id3);
+static int write_wav_header(FILE *f, uint64_t totalFrames, uint32_t sampleRate, str_buffer *id3);
 static int write_wav_footer(FILE *f, str_buffer *id3);
 
 static void id3_init(str_buffer *s);
@@ -54,32 +54,33 @@ static void pack_uint16le(uint8_t *d, uint16_t n);
 static void pack_uint32le(uint8_t *d, uint32_t n);
 
 static void on_sample(GB_gameboy_t *gb, GB_sample_t *sample) {
+#if CHANNELS == 1
+    int32_t s;
+#endif
     audio_buffer *abuffer = GB_get_user_data(gb);
     if(abuffer->totalFrames) {
+#if CHANNELS == 1
+        s = (int32_t)sample->left;
+        s += (int32_t)sample->right;
+        s /= 2;
+        abuffer->samples[abuffer->curSample++] = CLAMP(s,-0x8000,0x7FFF);
+#elif CHANNELS == 2
         abuffer->samples[abuffer->curSample++] = sample->left;
         abuffer->samples[abuffer->curSample++] = sample->right;
+#endif
         abuffer->totalFrames--;
 
-        if(abuffer->curSample == 2 * BUFFER_SIZE) {
+        if(abuffer->curSample == CHANNELS * BUFFER_SIZE) {
             fade_frames(abuffer->samples,abuffer->totalFrames,abuffer->fadeFrames,BUFFER_SIZE);
             pack_frames(abuffer->packed,abuffer->samples,BUFFER_SIZE);
-            fwrite(abuffer->packed,1,2 * BUFFER_SIZE * sizeof(int16_t), abuffer->output);
+            fwrite(abuffer->packed,1,CHANNELS * BUFFER_SIZE * sizeof(int16_t), abuffer->output);
             abuffer->curSample = 0;
         }
     }
 }
 
-static void dummy_vblank(GB_gameboy_t *gb) {
-
-}
-
-static uint32_t rgb_encode_callback(GB_gameboy_t *gb, uint8_t r, uint8_t g, uint8_t b) {
-    return 0;
-}
-
-static uint32_t pixels[160 * 144];
-
 int main(int argc, const char *argv[]) {
+    int r = 1;
     uint8_t *m3uData;
     uint32_t m3uSize;
 
@@ -91,6 +92,7 @@ int main(int argc, const char *argv[]) {
     unsigned int i;
     unsigned int trackNo;
     unsigned int t;
+    uint64_t sampleRate;
 
     char trackName[BUFFER_SIZE];
     char outName[BUFFER_SIZE];
@@ -116,6 +118,7 @@ int main(int argc, const char *argv[]) {
     m3uSize = 0;
     gbsSize = 0;
     tmpAlloc = 0;
+    sampleRate = DEFAULT_SAMPLE_RATE;
 
     if(argc < 2) {
         printf("Usage: /path/to/file.gbs (/path/to/file.m3u)\n");
@@ -123,15 +126,15 @@ int main(int argc, const char *argv[]) {
     }
 
     id3_buffer.x = (uint8_t *)malloc(sizeof(uint8_t) * BUFFER_SIZE);
-    if(id3_buffer.x == NULL) return 1;
+    if(id3_buffer.x == NULL) goto done;
     id3_buffer.len = 0;
     id3_buffer.a = BUFFER_SIZE;
 
     gbsData = slurp(argv[1], &gbsSize);
-    if(gbsData == NULL) return 1;
+    if(gbsData == NULL) goto done;
 
     GB_init(&gb, GB_MODEL_DMG_B);
-    GB_set_sample_rate(&gb, SAMPLE_RATE);
+    GB_set_sample_rate(&gb, sampleRate);
     GB_set_user_data(&gb, &abuffer);
     GB_apu_set_sample_callback(&gb, on_sample);
     GB_set_rendering_disabled(&gb, 1);
@@ -149,10 +152,10 @@ int main(int argc, const char *argv[]) {
 
     if(argc > 2) {
         m3uData = slurp(argv[2], &m3uSize);
-        if(m3uData == NULL) return 1;
+        if(m3uData == NULL) goto done;
         nez_m3u_init(&m3u);
         i = 0;
-        if(nez_m3u_parse(&m3u,(const char *)m3uData,m3uSize) == 0) return 1;
+        if(nez_m3u_parse(&m3u,(const char *)m3uData,m3uSize) == 0) goto done;
         while(m3u.linetype == NEZ_M3U_COMMENT) {
             if(tmpAlloc < m3u.linelength) {
                 tmp = realloc(tmp,m3u.linelength + 1);
@@ -225,7 +228,7 @@ int main(int argc, const char *argv[]) {
                 memcpy(title,c,strlen(c) + 1);
             }
 
-            if(nez_m3u_parse(&m3u,(const char *)m3uData,m3uSize) == 0) return 1;
+            if(nez_m3u_parse(&m3u,(const char *)m3uData,m3uSize) == 0) goto done;
             i++;
         }
         /* find any tags we can */
@@ -246,8 +249,8 @@ int main(int argc, const char *argv[]) {
 
         if(m3uData == NULL) {
             trackNo = i;
-            abuffer.totalFrames = 3 * 60 * SAMPLE_RATE;
-            abuffer.fadeFrames  = 10 * SAMPLE_RATE;
+            abuffer.totalFrames = 3 * 60 * sampleRate;
+            abuffer.fadeFrames  = 10 * sampleRate;
         } else {
             if(nez_m3u_parse(&m3u,(const char *)m3uData,m3uSize) == 0) goto done;
             while(m3u.linetype != NEZ_M3U_TRACK) {
@@ -258,19 +261,19 @@ int main(int argc, const char *argv[]) {
             t = t + 1 > sizeof(trackName) ? sizeof(trackName) : t + 1;
             nez_m3u_title(&m3u,trackName,t);
             if(m3u.length != -1) {
-                abuffer.totalFrames = m3u.length * SAMPLE_RATE / 1000;
+                abuffer.totalFrames = m3u.length * sampleRate / 1000;
             } else {
                 if(m3u.fade == -1) {
-                    abuffer.totalFrames = 170 * SAMPLE_RATE;
+                    abuffer.totalFrames = 170 * sampleRate;
                 } else {
-                    abuffer.totalFrames = 180 * SAMPLE_RATE;
+                    abuffer.totalFrames = 180 * sampleRate;
                 }
             }
 
             if(m3u.fade != -1) {
-                abuffer.fadeFrames = m3u.fade * SAMPLE_RATE / 1000;
+                abuffer.fadeFrames = m3u.fade * sampleRate / 1000;
             } else {
-                abuffer.fadeFrames  = 10 * SAMPLE_RATE;
+                abuffer.fadeFrames  = 10 * sampleRate;
             }
 
             abuffer.totalFrames += abuffer.fadeFrames;
@@ -328,11 +331,11 @@ int main(int argc, const char *argv[]) {
         abuffer.output = fopen(outName,"wb");
         abuffer.curSample = 0;
         abuffer.startFrames = abuffer.totalFrames;
-        write_wav_header(abuffer.output,abuffer.totalFrames,&id3_buffer);
+        write_wav_header(abuffer.output,abuffer.totalFrames,(uint32_t)sampleRate,&id3_buffer);
 
         GB_reset(&gb);
         /* GB_lcd_off(&gb); */
-        GB_gbs_switch_track(&gb,i);
+        GB_gbs_switch_track(&gb,trackNo);
 
         double nextPct = 0.0f;
 
@@ -347,8 +350,8 @@ int main(int argc, const char *argv[]) {
         }
 
         if(abuffer.curSample > 0) {
-            fade_frames(abuffer.samples,abuffer.totalFrames,abuffer.fadeFrames,abuffer.curSample / 2);
-            pack_frames(abuffer.packed,abuffer.samples,abuffer.curSample / 2);
+            fade_frames(abuffer.samples,abuffer.totalFrames,abuffer.fadeFrames,abuffer.curSample / CHANNELS);
+            pack_frames(abuffer.packed,abuffer.samples,abuffer.curSample / CHANNELS);
             fwrite(abuffer.packed,1,abuffer.curSample * sizeof(int16_t), abuffer.output);
         }
 
@@ -357,9 +360,22 @@ int main(int argc, const char *argv[]) {
 
         i++;
     }
-    done:
+    r = 0;
 
-    return 0;
+    done:
+    GB_free(&gb);
+
+    if(title != NULL) free(title);
+    if(artist != NULL) free(artist);
+    if(date != NULL) free(date);
+    if(ripper != NULL) free(ripper);
+    if(tagger != NULL) free(tagger);
+    if(tmp != NULL) free(tmp);
+    if(id3_buffer.x != NULL) free(id3_buffer.x);
+    if(gbsData != NULL) free(gbsData);
+    if(m3uData != NULL) free(m3uData);
+
+    return r;
 }
 
 static uint8_t *slurp(const char *filename, uint32_t *size) {
@@ -378,13 +394,16 @@ static uint8_t *slurp(const char *filename, uint32_t *size) {
     buf = (uint8_t *)malloc(*size);
     if(buf == NULL) {
         fprintf(stderr,"out of memory\n");
+        fclose(f);
         return NULL;
     }
     if(fread(buf,1,*size,f) != *size) {
         fprintf(stderr,"error reading file\n");
         free(buf);
+        fclose(f);
         return NULL;
     }
+    fclose(f);
     return buf;
 }
 
@@ -556,9 +575,9 @@ static int write_wav_footer(FILE *f, str_buffer *id3) {
     return 1;
 }
 
-static int write_wav_header(FILE *f, uint64_t totalFrames, str_buffer *id3) {
-    unsigned int dataSize = totalFrames * sizeof(int16_t) * CHANNELS;
-    unsigned int id3Size = 0;
+static int write_wav_header(FILE *f, uint64_t totalFrames, uint32_t sampleRate, str_buffer *id3) {
+    uint64_t dataSize = totalFrames * sizeof(int16_t) * CHANNELS;
+    uint64_t id3Size = 0;
     uint8_t tmp[4];
 
     if(id3->len > 10) id3Size = id3->len + 8;
@@ -579,10 +598,10 @@ static int write_wav_header(FILE *f, uint64_t totalFrames, str_buffer *id3) {
     pack_uint16le(tmp,CHANNELS); /* numChannels */
     if(fwrite(tmp,1,2,f) != 2) return 0;
 
-    pack_uint32le(tmp,SAMPLE_RATE);
+    pack_uint32le(tmp,sampleRate);
     if(fwrite(tmp,1,4,f) != 4) return 0;
 
-    pack_uint32le(tmp,SAMPLE_RATE * CHANNELS * sizeof(int16_t));
+    pack_uint32le(tmp,sampleRate * CHANNELS * sizeof(int16_t));
     if(fwrite(tmp,1,4,f) != 4) return 0;
 
     pack_uint16le(tmp,CHANNELS * sizeof(int16_t));
@@ -600,9 +619,9 @@ static int write_wav_header(FILE *f, uint64_t totalFrames, str_buffer *id3) {
 }
 
 static void
-fade_frames(int16_t *data, unsigned int framesRem, unsigned int framesFade, unsigned int frameCount) {
-    unsigned int i = 0;
-    unsigned int f = framesFade;
+fade_frames(int16_t *data, uint64_t framesRem, uint64_t framesFade, uint64_t frameCount) {
+    uint64_t i = 0;
+    uint64_t f = framesFade;
     double fade;
     int32_t sl, sr;
 
@@ -635,8 +654,8 @@ fade_frames(int16_t *data, unsigned int framesRem, unsigned int framesFade, unsi
     return;
 }
 
-static void pack_frames(uint8_t *d, int16_t *s, unsigned int frameCount) {
-    unsigned int i = 0;
+static void pack_frames(uint8_t *d, int16_t *s, uint64_t frameCount) {
+    uint64_t i = 0;
     while(i<frameCount) {
         pack_int16le(&d[0],s[(i*2)+0]);
 #if CHANNELS == 2
@@ -647,6 +666,3 @@ static void pack_frames(uint8_t *d, int16_t *s, unsigned int frameCount) {
     }
 }
 
-static int write_frames(FILE *f, uint8_t *d, unsigned int frameCount) {
-    return fwrite(d,sizeof(int16_t) * CHANNELS,frameCount,f) == frameCount;
-}
