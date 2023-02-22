@@ -313,7 +313,7 @@ int main(int argc, const char *argv[]) {
                     c++;
                 }
                 while(*c && *c == ' ') c++;
-                if(!*c) continue;
+                if(!*c) goto nextline;
                 title = malloc(sizeof(char) * strlen(c) + 1);
                 memcpy(title,c,strlen(c) + 1);
             } else if( (c = strstr(tmp,"@ARTIST")) != NULL) {
@@ -324,7 +324,7 @@ int main(int argc, const char *argv[]) {
                     c++;
                 }
                 while(*c && *c == ' ') c++;
-                if(!*c) continue;
+                if(!*c) goto nextline;
                 artist = malloc(sizeof(char) * strlen(c) + 1);
                 memcpy(artist,c,strlen(c) + 1);
             } else if( (c = strstr(tmp,"@COMPOSER")) != NULL) {
@@ -335,7 +335,7 @@ int main(int argc, const char *argv[]) {
                     c++;
                 }
                 while(*c && *c == ' ') c++;
-                if(!*c) continue;
+                if(!*c) goto nextline;
                 composer = malloc(sizeof(char) * strlen(c) + 1);
                 memcpy(composer,c,strlen(c) + 1);
             } else if( (c = strstr(tmp,"@DATE")) != NULL) {
@@ -346,7 +346,7 @@ int main(int argc, const char *argv[]) {
                     c++;
                 }
                 while(*c && *c == ' ') c++;
-                if(!*c) continue;
+                if(!*c) goto nextline;
                 date = malloc(sizeof(char) * strlen(c) + 1);
                 memcpy(date,c,strlen(c) + 1);
             } else if( (c = strstr(tmp,"@RIPPER")) != NULL) {
@@ -357,7 +357,7 @@ int main(int argc, const char *argv[]) {
                     c++;
                 }
                 while(*c && *c == ' ') c++;
-                if(!*c) continue;
+                if(!*c) goto nextline;
                 ripper = malloc(sizeof(char) * strlen(c) + 1);
                 memcpy(ripper,c,strlen(c) + 1);
             } else if( (c = strstr(tmp,"@TAGGER")) != NULL) {
@@ -368,7 +368,7 @@ int main(int argc, const char *argv[]) {
                     c++;
                 }
                 while(*c && *c == ' ') c++;
-                if(!*c) continue;
+                if(!*c) goto nextline;
                 tagger = malloc(sizeof(char) * strlen(c) + 1);
                 memcpy(tagger,c,strlen(c) + 1);
             }
@@ -376,11 +376,12 @@ int main(int argc, const char *argv[]) {
                 c = tmp;
                 while(*c && *c == '#') c++;
                 while(*c && *c == ' ') c++;
-                if(!*c) continue;
+                if(!*c) goto nextline;
                 title = malloc(sizeof(char) * strlen(c) + 1);
                 memcpy(title,c,strlen(c) + 1);
             }
 
+            nextline:
             if(nez_m3u_parse(&m3u,(const char *)m3uData,m3uSize) == 0) goto done;
             i++;
         }
