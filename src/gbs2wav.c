@@ -33,7 +33,7 @@ typedef struct audio_buffer {
     uint64_t totalFrames;
     uint64_t fadeFrames;
     int16_t samples[MAX_CHANNELS * BUFFER_SIZE];
-    uint8_t packed[MAX_CHANNELS * BUFFER_SIZE * sizeof(int16_t)];
+    uint8_t packed[MAX_CHANNELS * BUFFER_SIZE * 2];
     uint64_t curSample;
 } audio_buffer;
 
@@ -75,7 +75,7 @@ static void on_sample_mono(GB_gameboy_t *gb, GB_sample_t *sample) {
         if(abuffer->curSample == BUFFER_SIZE) {
             fade_frames_mono(abuffer->samples,abuffer->totalFrames,abuffer->fadeFrames,BUFFER_SIZE);
             pack_frames_mono(abuffer->packed,abuffer->samples,BUFFER_SIZE);
-            fwrite(abuffer->packed,1, BUFFER_SIZE * sizeof(int16_t), abuffer->output);
+            fwrite(abuffer->packed,1, BUFFER_SIZE * 2, abuffer->output);
             abuffer->curSample = 0;
         }
     }
@@ -91,7 +91,7 @@ static void on_sample_stereo(GB_gameboy_t *gb, GB_sample_t *sample) {
         if(abuffer->curSample == 2 * BUFFER_SIZE) {
             fade_frames_stereo(abuffer->samples,abuffer->totalFrames,abuffer->fadeFrames,BUFFER_SIZE);
             pack_frames_stereo(abuffer->packed,abuffer->samples,BUFFER_SIZE);
-            fwrite(abuffer->packed,1,2 * BUFFER_SIZE * sizeof(int16_t), abuffer->output);
+            fwrite(abuffer->packed,1,2 * BUFFER_SIZE * 2, abuffer->output);
             abuffer->curSample = 0;
         }
     }
@@ -572,7 +572,7 @@ int main(int argc, const char *argv[]) {
                 fade_frames_stereo(abuffer.samples,abuffer.totalFrames,abuffer.fadeFrames,abuffer.curSample / 2);
                 pack_frames_stereo(abuffer.packed,abuffer.samples,abuffer.curSample / 2);
             }
-            fwrite(abuffer.packed,1,abuffer.curSample * sizeof(int16_t), abuffer.output);
+            fwrite(abuffer.packed,1,abuffer.curSample * 2, abuffer.output);
         }
 
         write_wav_footer(abuffer.output,&id3_buffer);
@@ -797,7 +797,7 @@ static int write_wav_footer(FILE *f, str_buffer *id3) {
 }
 
 static int write_wav_header(FILE *f, uint64_t channels, uint64_t totalFrames, uint32_t sampleRate, str_buffer *id3) {
-    uint64_t dataSize = totalFrames * sizeof(int16_t) * channels;
+    uint64_t dataSize = totalFrames * 2 * channels;
     uint64_t id3Size = 0;
     uint8_t tmp[4];
 
@@ -822,13 +822,13 @@ static int write_wav_header(FILE *f, uint64_t channels, uint64_t totalFrames, ui
     pack_uint32le(tmp,sampleRate);
     if(fwrite(tmp,1,4,f) != 4) return 0;
 
-    pack_uint32le(tmp,sampleRate * channels * sizeof(int16_t));
+    pack_uint32le(tmp,sampleRate * channels * 2);
     if(fwrite(tmp,1,4,f) != 4) return 0;
 
-    pack_uint16le(tmp,channels * sizeof(int16_t));
+    pack_uint16le(tmp,channels * 2);
     if(fwrite(tmp,1,2,f) != 2) return 0;
 
-    pack_uint16le(tmp,sizeof(int16_t) * 8);
+    pack_uint16le(tmp,2 * 8);
     if(fwrite(tmp,1,2,f) != 2) return 0;
 
     if(fwrite("data",1,4,f) != 4) return 0;
@@ -910,7 +910,7 @@ fade_frames_stereo(int16_t *data, uint64_t framesRem, uint64_t framesFade, uint6
 static void pack_frames_mono(uint8_t *d, int16_t *s, uint64_t frameCount) {
     uint64_t i = 0;
     while(i<frameCount) {
-        pack_int16le(d,s[i]);
+        pack_int16le(&d[0],s[i]);
         i++;
         d += 2;
     }
@@ -920,9 +920,9 @@ static void pack_frames_stereo(uint8_t *d, int16_t *s, uint64_t frameCount) {
     uint64_t i = 0;
     while(i<frameCount) {
         pack_int16le(&d[0],s[(i*2)+0]);
-        pack_int16le(&d[sizeof(int16_t)],s[(i*2)+1]);
+        pack_int16le(&d[2],s[(i*2)+1]);
         i++;
-        d += (sizeof(int16_t) * 2);
+        d += 4;
     }
 }
 
