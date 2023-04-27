@@ -280,6 +280,7 @@ int main(int argc, const char *argv[]) {
         GB_apu_set_sample_callback(&gb, on_sample_stereo);
     }
     GB_set_rendering_disabled(&gb, 1);
+    GB_set_turbo_mode(&gb, true, true);
 
     GB_load_gbs_from_buffer(&gb, gbsData, gbsSize, &gbsInfo);
 
