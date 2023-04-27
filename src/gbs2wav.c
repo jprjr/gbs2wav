@@ -53,7 +53,6 @@ static int write_wav_footer(FILE *f, str_buffer *id3);
 
 static void id3_init(str_buffer *s);
 static int id3_add_text(str_buffer *s, const char *frame, const char *data, size_t datalen);
-static int id3_add_comment(str_buffer *s,const char *data, size_t datalen);
 static int id3_add_private(str_buffer *s, const char *description, const char *data, size_t datalen);
 
 static void pack_int16le(uint8_t *d, int16_t n);
@@ -684,44 +683,6 @@ static int id3_add_text(str_buffer *s, const char *frame, const char *data, size
     s->x[s->len++] = 0x00;
     s->x[s->len++] = 0x00;
     s->x[s->len++] = 0x03;
-
-    memcpy(&s->x[s->len], data, datalen);
-    s->len += datalen;
-    s->x[s->len++] = 0x00;
-
-    id3_update_len(s);
-
-    return 0;
-}
-
-static int id3_add_comment(str_buffer *s, const char *data, size_t datalen) {
-    uint8_t *t;
-
-    while(s->len + 10 + (1 + 3 + datalen + 1 + 1) > s->a) {
-        t = realloc(s->x, s->a + 512);
-        if(t == NULL) {
-            return -1;
-        }
-        s->x = t;
-        s->a += 512;
-    }
-
-    s->x[s->len++] = 'C';
-    s->x[s->len++] = 'O';
-    s->x[s->len++] = 'M';
-    s->x[s->len++] = 'M';
-
-    pack_uint32_syncsafe(&s->x[s->len],(1 + 3 + datalen + 1 + 1));
-    s->len += 4;
-
-    s->x[s->len++] = 0x00; /* flags */
-    s->x[s->len++] = 0x00; /* flags */
-    s->x[s->len++] = 0x03; /* encoding */
-
-    s->x[s->len++] = 'e';
-    s->x[s->len++] = 'n';
-    s->x[s->len++] = 'g';
-    s->x[s->len++] = 0x00; /* short content descrip */
 
     memcpy(&s->x[s->len], data, datalen);
     s->len += datalen;
