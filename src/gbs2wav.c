@@ -665,7 +665,7 @@ static void id3_init(str_buffer *s) {
 static int id3_add_text(str_buffer *s, const char *frame, const char *data, size_t datalen) {
     uint8_t *t;
 
-    while(s->len + 10 + (1 + datalen + 1) > s->a) {
+    while(s->len + 10 + (1 + datalen) > s->a) {
         t = realloc(s->x, s->a + 512);
         if(t == NULL) {
             return -1;
@@ -677,7 +677,7 @@ static int id3_add_text(str_buffer *s, const char *frame, const char *data, size
     memcpy(&s->x[s->len],frame,4);
     s->len += 4;
 
-    pack_uint32_syncsafe(&s->x[s->len],(1 + datalen + 1));
+    pack_uint32_syncsafe(&s->x[s->len],(1 + datalen));
     s->len += 4;
 
     s->x[s->len++] = 0x00;
@@ -686,7 +686,6 @@ static int id3_add_text(str_buffer *s, const char *frame, const char *data, size
 
     memcpy(&s->x[s->len], data, datalen);
     s->len += datalen;
-    s->x[s->len++] = 0x00;
 
     id3_update_len(s);
 
@@ -696,7 +695,7 @@ static int id3_add_text(str_buffer *s, const char *frame, const char *data, size
 static int id3_add_private(str_buffer *s, const char *description, const char *data, size_t datalen) {
     uint8_t *t;
 
-    while(s->len + 10 + (1 + strlen(description) + 1 + datalen + 1) > s->a) {
+    while(s->len + 10 + (1 + strlen(description) + 1 + datalen) > s->a) {
         t = realloc(s->x, s->a + 512);
         if(t == NULL) {
             return -1;
@@ -710,7 +709,7 @@ static int id3_add_private(str_buffer *s, const char *description, const char *d
     s->x[s->len++] = 'X';
     s->x[s->len++] = 'X';
 
-    pack_uint32_syncsafe(&s->x[s->len],(1 + strlen(description) + 1 + datalen + 1));
+    pack_uint32_syncsafe(&s->x[s->len],(1 + strlen(description) + 1 + datalen));
     s->len += 4;
 
     s->x[s->len++] = 0x00; /* flags */
@@ -723,7 +722,6 @@ static int id3_add_private(str_buffer *s, const char *description, const char *d
 
     memcpy(&s->x[s->len], data, datalen);
     s->len += datalen;
-    s->x[s->len++] = 0x00;
 
     id3_update_len(s);
 
